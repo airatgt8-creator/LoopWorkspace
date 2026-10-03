@@ -9,17 +9,39 @@ This branch is for collecting diagnostics from a directly connected Libre 2 regi
 - The build workflow applies `submodule-patches/ourloop-ru-diagnostic-safety.patch` to the pinned Loop submodule.
 - The patch disables the Closed Loop control and adds a second hard check immediately before automatic dosing is enacted.
 - The dosing algorithm itself is unchanged.
-- Apple Watch targets and MedtrumKit remain at the upstream-pinned revisions.
+- MedtrumKit and the diagnostic Libre plugin remain available at their pinned revisions.
+- The Ad Hoc IPA is iPhone-only. Apple Watch content, Widget Extension, Intent Extension, and Status Extension are removed before signing.
+- The workflow never contacts App Store Connect and never uploads to TestFlight.
 
 Do not remove the compilation condition or the safety patch until Libre 2 RU values have been compared with an approved meter/reader over a representative range and the change has received a separate review.
 
-## Building with GitHub Actions
+## Building the iPhone-only Ad Hoc IPA with GitHub Actions
 
-1. Open the `ourloop-ru` branch of the LoopWorkspace fork on GitHub.
-2. Configure the normal Loop browser-build secrets and signing assets described in `fastlane/testflight.md`.
-3. Open **Actions**, run **4. Build Loop Manual**, and select `ourloop-ru`.
-4. Install the resulting TestFlight build using the normal Loop browser-build process.
-5. Confirm on first launch that Settings says automatic dosing is disabled in the Libre diagnostic build.
+Create exactly these repository Actions secrets:
+
+- `ADHOC_P12_BASE64`: the Base64 representation of the Ad Hoc signing certificate `.p12` file;
+- `ADHOC_P12_PASSWORD`: the password for that `.p12` file;
+- `ADHOC_MOBILEPROVISION_BASE64`: the Base64 representation of the Ad Hoc `.mobileprovision` file.
+
+No Team ID, bundle identifier, application group, device identifier, or App Store Connect secret is needed. The workflow extracts the signing values from the provisioning profile at runtime, masks them, and deletes all decoded signing files and the temporary keychain when the job ends.
+
+On Windows PowerShell, create each Base64 value locally without modifying the original file:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\certificate.p12"))
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\profile.mobileprovision"))
+```
+
+Then:
+
+1. Open the repository's **Settings → Secrets and variables → Actions** page and create the three secrets above.
+2. Open **Actions → 4. Build Loop Manual**. This existing workflow path is used as the launcher because GitHub only exposes manual workflows that also exist on the default branch.
+3. Choose **Run workflow**, select `ourloop-ru`, and run it. The branch implementation and resulting run are named **Build OurLoop RU AdHoc**.
+4. Download the `OurLoop-RU-AdHoc-IPA` artifact and extract `OurLoop-RU-AdHoc.ipa`.
+5. Install the IPA using an Ad Hoc-capable installer. It can install only on devices whose UDIDs are present in the provisioning profile.
+6. Confirm on first launch that Closed Loop is unavailable and reports that automatic dosing is disabled in the Libre diagnostic build.
+
+The workflow rejects expired, wildcard, development, App Store, or enterprise profiles. It also rejects profiles that do not allow HealthKit, HealthKit background delivery, NFC `TAG` reader sessions, and an application group.
 
 ## Building locally on a Mac
 
@@ -33,7 +55,7 @@ git -C Loop apply --unidiff-zero ../submodule-patches/ourloop-ru-diagnostic-safe
 open LoopWorkspace.xcworkspace
 ```
 
-Use the `LoopWorkspace` scheme. Signing and device installation otherwise follow the normal Loop instructions.
+Use the `LoopWorkspace` scheme only for development. The reproducible iPhone-only Ad Hoc packaging, extension removal, entitlement validation, and manual signing are implemented by the GitHub workflow.
 
 ## Collecting a useful sensor trace
 

@@ -1,6 +1,6 @@
 # LoopWorkspace
 
-> The `ourloop-ru` branch is a Libre 2 direct diagnostic build with automatic dosing disabled. See [docs/ourloop-ru-diagnostic.md](docs/ourloop-ru-diagnostic.md).
+> The `ourloop-ru` branch produces an iPhone-only Ad Hoc Libre 2 direct diagnostic IPA. Automatic dosing is disabled, app extensions are removed before signing, and nothing is uploaded to TestFlight. See [docs/ourloop-ru-diagnostic.md](docs/ourloop-ru-diagnostic.md).
 
 The Loop app can be built using GitHub in a browser on any computer or using a Mac with Xcode.
 
