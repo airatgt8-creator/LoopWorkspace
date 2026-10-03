@@ -218,6 +218,11 @@ jobs:
           git apply ./patches/* --allow-empty -v --whitespace=fix
           fi
 
+          # OurLoop RU diagnostic safety lock. This is deliberately applied inside the
+          # pinned Loop submodule and prevents this test build from enacting automatic doses.
+          git -C Loop apply --unidiff-zero --check ../submodule-patches/ourloop-ru-diagnostic-safety.patch
+          git -C Loop apply --unidiff-zero --whitespace=fix ../submodule-patches/ourloop-ru-diagnostic-safety.patch
+
           # Submodule Loop patches:
           # Template for customizing submodule Loop (changes Loop app name to "CustomLoop")
           # Remove the "#" sign from the beginning of the line below to activate:

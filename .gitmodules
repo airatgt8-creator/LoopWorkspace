@@ -51,7 +51,7 @@
 	url = https://github.com/LoopKit/MixpanelService
 [submodule "LibreTransmitter"]
 	path = LibreTransmitter
-	url = https://github.com/LoopKit/LibreTransmitter.git
+	url = https://github.com/airatgt8-creator/LibreTransmitter.git
 [submodule "OmnipodKit"]
 	path = OmnipodKit
 	url = https://github.com/loopandlearn/OmnipodKit

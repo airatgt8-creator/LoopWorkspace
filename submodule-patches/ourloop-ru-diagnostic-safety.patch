@@ -1,0 +1,31 @@
+diff --git a/Loop/Managers/DeviceDataManager.swift b/Loop/Managers/DeviceDataManager.swift
+index 3d07128e..49745f5d 100644
+--- a/Loop/Managers/DeviceDataManager.swift
++++ b/Loop/Managers/DeviceDataManager.swift
+@@ -17,0 +18,6 @@ import Combine
++#if OURLOOP_RU_DIAGNOSTIC_MODE
++let ourLoopDiagnosticBuildAllowsAutomaticDosing = false
++#else
++let ourLoopDiagnosticBuildAllowsAutomaticDosing = true
++#endif
++
+@@ -53 +59,3 @@ final class DeviceDataManager {
+-        if !cgmHasValidSensorSession {
++        if !ourLoopDiagnosticBuildAllowsAutomaticDosing {
++            return NSLocalizedString("Automatic dosing is disabled in this Libre diagnostic build.", comment: "The description text for the looping enabled switch cell when the diagnostic build safety lock is active")
++        } else if !cgmHasValidSensorSession {
+@@ -456 +464 @@ final class DeviceDataManager {
+-            .map { $0 == false || $1 }
++            .map { ($0 == false || $1) && ourLoopDiagnosticBuildAllowsAutomaticDosing }
+diff --git a/Loop/Managers/LoopDataManager.swift b/Loop/Managers/LoopDataManager.swift
+index c9aef285..dd4acaed 100644
+--- a/Loop/Managers/LoopDataManager.swift
++++ b/Loop/Managers/LoopDataManager.swift
+@@ -888 +888,3 @@ extension LoopDataManager {
+-            if error == nil, self.automaticDosingStatus.automaticDosingEnabled == true {
++            if error == nil,
++               self.automaticDosingStatus.automaticDosingEnabled == true,
++               ourLoopDiagnosticBuildAllowsAutomaticDosing {
+@@ -889,0 +892,2 @@ extension LoopDataManager {
++            } else if !ourLoopDiagnosticBuildAllowsAutomaticDosing {
++                self.logger.default("Automatic dosing blocked by OURLOOP_RU_DIAGNOSTIC_MODE safety lock.")
