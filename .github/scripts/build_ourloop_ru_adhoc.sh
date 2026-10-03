@@ -16,8 +16,10 @@ done
 secret_dir="$(mktemp -d "${RUNNER_TEMP}/ourloop-adhoc-secrets.XXXXXX")"
 build_dir="$(mktemp -d "${RUNNER_TEMP}/ourloop-adhoc-build.XXXXXX")"
 keychain_path="${secret_dir}/ourloop-build.keychain-db"
-keychain_password="$(openssl rand -base64 32)"
-p12_path="${secret_dir}/certificate.p12"
+source_p12_path="${secret_dir}/source-certificate.p12"
+legacy_p12_path="${secret_dir}/legacy-certificate.p12"
+certificate_pem_path="${secret_dir}/certificate.pem"
+private_key_pem_path="${secret_dir}/private-key.pem"
 profile_path="${secret_dir}/profile.mobileprovision"
 profile_plist="${secret_dir}/profile.plist"
 profile_metadata_dir="${secret_dir}/profile-metadata"
@@ -35,13 +37,101 @@ cleanup() {
 }
 trap cleanup EXIT
 
+supports_legacy_pkcs12() {
+  local candidate="$1"
+  local help_output
+
+  [[ -x "${candidate}" ]] || return 1
+  help_output="$("${candidate}" pkcs12 -help 2>&1 || true)"
+  [[ "${help_output}" == *"-legacy"* ]]
+}
+
+openssl_bin=""
+system_openssl="$(command -v openssl || true)"
+for candidate in \
+  "${system_openssl}" \
+  /opt/homebrew/opt/openssl@3/bin/openssl \
+  /usr/local/opt/openssl@3/bin/openssl; do
+  if supports_legacy_pkcs12 "${candidate}"; then
+    openssl_bin="${candidate}"
+    break
+  fi
+done
+
+if [[ -z "${openssl_bin}" ]] && command -v brew >/dev/null 2>&1; then
+  homebrew_openssl_prefix="$(brew --prefix openssl@3 2>/dev/null || true)"
+  if [[ -n "${homebrew_openssl_prefix}" ]] \
+    && supports_legacy_pkcs12 "${homebrew_openssl_prefix}/bin/openssl"; then
+    openssl_bin="${homebrew_openssl_prefix}/bin/openssl"
+  fi
+fi
+
+if [[ -z "${openssl_bin}" ]]; then
+  echo "::error::OpenSSL 3 with PKCS#12 legacy export support is required."
+  exit 2
+fi
+
+keychain_password="$("${openssl_bin}" rand -base64 32)"
+
 mkdir -p "${profile_metadata_dir}" "${artifacts_dir}"
 rm -f "${ipa_path}"
 
-printf '%s' "${ADHOC_P12_BASE64}" | /usr/bin/base64 -D > "${p12_path}"
+printf '%s' "${ADHOC_P12_BASE64}" | /usr/bin/base64 -D > "${source_p12_path}"
 printf '%s' "${ADHOC_MOBILEPROVISION_BASE64}" | /usr/bin/base64 -D > "${profile_path}"
-chmod 600 "${p12_path}" "${profile_path}"
+chmod 600 "${source_p12_path}" "${profile_path}"
 unset ADHOC_P12_BASE64 ADHOC_MOBILEPROVISION_BASE64
+
+if ! "${openssl_bin}" pkcs12 \
+  -in "${source_p12_path}" \
+  -passin env:ADHOC_P12_PASSWORD \
+  -noout >/dev/null 2>&1; then
+  echo "::error::The source PKCS#12 failed password or integrity verification."
+  exit 2
+fi
+
+if ! "${openssl_bin}" pkcs12 \
+  -in "${source_p12_path}" \
+  -passin env:ADHOC_P12_PASSWORD \
+  -clcerts \
+  -nokeys \
+  -out "${certificate_pem_path}" >/dev/null 2>&1; then
+  echo "::error::Could not extract the signing certificate from the source PKCS#12."
+  exit 2
+fi
+
+if ! "${openssl_bin}" pkcs12 \
+  -in "${source_p12_path}" \
+  -passin env:ADHOC_P12_PASSWORD \
+  -nocerts \
+  -nodes \
+  -out "${private_key_pem_path}" >/dev/null 2>&1; then
+  echo "::error::Could not extract the private key from the source PKCS#12."
+  exit 2
+fi
+
+chmod 600 "${certificate_pem_path}" "${private_key_pem_path}"
+
+if ! "${openssl_bin}" pkcs12 \
+  -export \
+  -legacy \
+  -in "${certificate_pem_path}" \
+  -inkey "${private_key_pem_path}" \
+  -out "${legacy_p12_path}" \
+  -passout env:ADHOC_P12_PASSWORD >/dev/null 2>&1; then
+  echo "::error::Could not create an Apple-compatible legacy PKCS#12."
+  exit 2
+fi
+
+chmod 600 "${legacy_p12_path}"
+
+if ! "${openssl_bin}" pkcs12 \
+  -legacy \
+  -in "${legacy_p12_path}" \
+  -passin env:ADHOC_P12_PASSWORD \
+  -noout >/dev/null 2>&1; then
+  echo "::error::The converted legacy PKCS#12 failed integrity verification."
+  exit 2
+fi
 
 security cms -D -i "${profile_path}" > "${profile_plist}"
 
@@ -200,7 +290,7 @@ app_group="$(<"${profile_metadata_dir}/app-group.txt")"
 security create-keychain -p "${keychain_password}" "${keychain_path}"
 security set-keychain-settings -lut 21600 "${keychain_path}"
 security unlock-keychain -p "${keychain_password}" "${keychain_path}"
-security import "${p12_path}" -k "${keychain_path}" -P "${ADHOC_P12_PASSWORD}" -T /usr/bin/codesign >/dev/null
+security import "${legacy_p12_path}" -k "${keychain_path}" -P "${ADHOC_P12_PASSWORD}" -T /usr/bin/codesign >/dev/null
 security set-key-partition-list -S apple-tool:,apple: -s -k "${keychain_password}" "${keychain_path}" >/dev/null
 security list-keychains -d user -s "${keychain_path}"
 unset ADHOC_P12_PASSWORD
